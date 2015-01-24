@@ -1,0 +1,116 @@
+# coding: utf-8
+
+# = co-occur-matrix
+# Author::Hiromasa IWAYAMA
+#
+# クラス内で使われている単語一覧のJSONファイルから
+# 共起度行列を生成する
+#
+
+cdir = File.expand_path("../", __FILE__)
+
+require'active_support/core_ext/array'
+require'json'
+
+require "#{cdir}/ext/array.rb"
+require "#{cdir}/../WordIndexer/word-indexer.rb"
+
+class CoOccurMatrix
+ 
+  def initialize jsonfilename
+    json = open(jsonfilename, "r") do |f|
+      JSON.parse(f.read)
+    end
+
+    # 各ファイル内での単語の重複を削除
+    # 重複を除いた結果, 単語一覧が空のクラスは削除する 
+    @methods_in_files = json.inject({}) do |h, pair|
+      filename, method_list = pair
+      list = method_list.reject{|method_name|
+        method_name.blank?
+      }.uniq
+      h[filename] = list unless list.empty?
+      h
+    end
+  end
+
+  # 単語の出現頻度リストの作成
+  def word_hist
+    hist = {}
+    @methods_in_files.each do |java_filename, method_list|
+      method_list.each do |method_name|
+        if hist[method_name].nil?
+          hist[method_name] = 1
+        else
+          hist[method_name] += 1
+        end
+      end 
+    end
+    hist
+  end
+
+
+  def word_based
+    word_based_map = {}
+    @methods_in_files.each do |filename, words|
+      words.each do |word|
+        if word_based_map[word].nil?
+          word_based_map[word] = [filename]
+        elsif !word_based_map[word].member?(filename)
+          word_based_map[word] << filename
+        end
+      end  
+    end
+    word_based_map
+  end
+
+  # 共起度行列(三角行列)の生成
+  # 対角成分は0になる
+  def ad_mat
+    mat = Hash.new{|hash, key| hash[key] = {} }
+    @methods_in_files.each do |java_filename, method_list|
+      method_list.combination(2) do |w1, w2|
+        i1 = WordIndexer.to_id(w1.strip)
+        i2 = WordIndexer.to_id(w2.strip)
+
+        if i1>=0 and i2>=0  
+          i1, i2 = i2, i1 if i1>i2
+
+          unless mat[i1][i2].nil? 
+            mat[i1][i2] += 1  
+          else
+            mat[i1][i2] = 1
+          end
+        end
+      end
+    end
+    mat
+  end
+
+  # 距離行列から辺リストへの変換
+  # + Param:: mat 距離行列
+  # + Param:: word_dict 距離行列のindexを単語に変換するhash
+  def to_list
+    edge_list = []
+    ad_mat.each do |c_index, cols|
+      cols.each do |r_index, value|
+        if value>0
+          edge_list << {
+            cost:value, u:c_index, v:r_index, 
+            uw: WordIndexer.to_word(c_index), 
+            vw: WordIndexer.to_word(r_index)
+          }
+        end 
+      end
+    end
+    edge_list
+  end
+  
+  # 共起度行列の出力(隣接行列形式)
+  def output_co_occur_mat filename
+    ad_mat.output(filename) do |value|
+      value
+    end
+  end
+
+end

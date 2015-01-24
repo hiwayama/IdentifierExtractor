@@ -1,0 +1,33 @@
+require File.expand_path("../config/boot.rb", __FILE__)
+
+namespace :db do
+
+	desc 'migration'
+	task :migrate do
+		ActiveRecord::Migrator.migrate(
+			'db/migrate',
+			ENV["VERSION"] ? ENV["VERSION"].to_i : nil
+		)
+	end
+
+  desc 'create database'
+  task :create do
+    case SETTING["adapter"]
+    when "mysql2"
+      sh "mysql -u #{SETTING["username"]} -p -e \"CREATE DATABASE #{SETTING["database"]} CHARACTER SET UTF8;\""
+    end
+  end
+
+	desc 'reset'
+	task :reset do
+    case SETTING["adapter"]
+    when "sqlite3" 
+      sh "rm #{SETTING['database']}"
+    when "mysql2"
+      sh "mysql -u #{SETTING["username"]} -p -e \"DROP DATABASE #{SETTING["database"]};\""
+    end
+    sh "rake db:create"
+		sh "rake db:migrate"
+	end
+
+end
